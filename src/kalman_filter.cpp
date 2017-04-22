@@ -1,6 +1,8 @@
 #include "kalman_filter.h"
 #include "FusionEKF.h"
 
+#define EPSILON 0.0001
+
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -31,9 +33,7 @@ void KalmanFilter::Update(const VectorXd &z) {
 
 	//new estimate
 	x_ = x_ + (K * y);
-	long x_size = x_.size();
-	MatrixXd I = MatrixXd::Identity(x_size, x_size);
-	P_ = (I - K * H_) * P_;
+	P_ = (I_ - K * H_) * P_;
 }
 
 void KalmanFilter::UpdateEKF(const VectorXd &z) {
@@ -42,13 +42,16 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
 	float vx = x_(2);
 	float vy = x_(3);
 
-	float c1 = sqrt(px*px + py*py);
+	float rho = sqrt(px*px + py*py);
+	float phi = (py == 0 && px == 0) ? 0 : atan2(py,px);
+	float rho_dot = rho < EPSILON ? (px*vx+py*vy)/EPSILON : (px*vx+py*vy)/rho;
 
 	VectorXd H_x(3);
-	H_x << c1, atan2(py,px), (px*vx+py*vy)/c1;
+	H_x << rho, phi, rho_dot;
 	H_x = H_x.transpose();
 
-	float phi = z(1);
+	VectorXd y = z - H_x;
+	phi = y(1);
 
 	while (phi > M_PI) {
 		phi -= 2*M_PI;
@@ -57,17 +60,13 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
 		phi += 2*M_PI;
 	}
 
-	VectorXd z_new(3);
-	z_new << z(0), phi, z(2);
+	y(1) = phi;
 
-	VectorXd y = z_new - H_x;
 	MatrixXd H_t = H_.transpose();
 	MatrixXd S = H_ * P_ * H_t + R_;
 	MatrixXd K = P_ * H_t * S.inverse();
 
 	//new estimate
 	x_ = x_ + (K * y);
-	long x_size = x_.size();
-	MatrixXd I = MatrixXd::Identity(x_size, x_size);
-	P_ = (I - K * H_) * P_;
+	P_ = (I_ - K * H_) * P_;
 }
